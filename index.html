@@ -182,30 +182,85 @@
   }
   .subject-card.collapsed .subject-body { display: none; }
 
-  .topic-block { margin-top: 14px; }
+  .topic-block {
+    margin-top: 14px;
+    border-radius: var(--radius-sm);
+  }
   .topic-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 8px;
+    cursor: pointer;
   }
+  .topic-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .topic-chevron {
+    font-size: 10px;
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+  }
+  .topic-block.collapsed .topic-chevron { transform: rotate(-90deg); }
+  .topic-name-wrap { min-width: 0; }
   .topic-name {
     font-size: 14px;
     font-weight: 600;
     color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .topic-actions { display: flex; gap: 6px; }
+  .topic-meta { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+  .topic-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .topic-avg-pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    color: #fff;
+  }
+  .topic-block.collapsed .topic-body { display: none; }
 
   .issue-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 10px;
     border-radius: var(--radius-sm);
     background: var(--surface-2);
     margin-bottom: 6px;
+    padding: 10px 10px;
+  }
+  .issue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .issue-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+  }
+  .issue-chevron {
+    font-size: 9px;
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+  }
+  .issue-row.collapsed .issue-chevron { transform: rotate(-90deg); }
+  .issue-row.collapsed .issue-body { display: none; }
+  .issue-header-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .issue-badge {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
   }
   .issue-main { flex: 1; min-width: 0; }
+  .issue-body { padding-top: 6px; }
   .issue-name-input {
     width: 100%;
     border: none;
@@ -522,22 +577,32 @@ function renderTopic(subject, topic) {
   const issuesHtml = topic.issues.map(issue => renderIssue(subject, topic, issue)).join('');
   const addIssueForm = pendingAdd && pendingAdd.type === 'issue' && pendingAdd.topicId === topic.id
     ? inlineAddForm('issue', 'Issue name') : `<button class="add-link" onclick="startAddIssue('${subject.id}','${topic.id}')">+ Add Issue</button>`;
+  const avg = topicAvg(topic);
+  const collapsedClass = topic.collapsed ? 'collapsed' : '';
 
-  return `<div class="topic-block" id="topic-${topic.id}">
-    <div class="topic-header">
-      <div class="topic-name">${escapeHtml(topic.name)}</div>
-      <div class="topic-actions">
+  return `<div class="topic-block ${collapsedClass}" id="topic-${topic.id}">
+    <div class="topic-header" onclick="toggleTopic('${subject.id}','${topic.id}')">
+      <div class="topic-header-left">
+        <span class="topic-chevron">&#9662;</span>
+        <div class="topic-name-wrap">
+          <div class="topic-name">${escapeHtml(topic.name)}</div>
+          <div class="topic-meta">${topic.issues.length} issue${topic.issues.length === 1 ? '' : 's'}</div>
+        </div>
+      </div>
+      <div class="topic-actions" onclick="event.stopPropagation()">
+        ${avg !== null ? `<div class="topic-avg-pill" style="background:${avgColor(avg)}">${avg.toFixed(1)}</div>` : ''}
         <button class="row-delete" onclick="deleteTopic('${subject.id}','${topic.id}')" title="Delete topic">&times;</button>
       </div>
     </div>
-    ${issuesHtml}
-    ${addIssueForm}
+    <div class="topic-body">
+      ${issuesHtml}
+      ${addIssueForm}
+    </div>
   </div>`;
 }
 
 function renderIssue(subject, topic, issue) {
   const dots = [1,2,3,4,5].map(n => {
-    const filled = issue.rating >= n;
     const bg = issue.rating >= n ? ratingColor(issue.rating) : 'transparent';
     return `<div class="dot" style="background:${bg};border-color:${issue.rating >= n ? ratingColor(issue.rating) : 'var(--border)'}"
       onclick="setRating('${subject.id}','${topic.id}','${issue.id}',${n})"></div>`;
@@ -550,16 +615,30 @@ function renderIssue(subject, topic, issue) {
     return `<button class="freq-btn ${activeClass}" onclick="setFrequency('${subject.id}','${topic.id}','${issue.id}','${f}')">${label}</button>`;
   }).join('');
 
-  return `<div class="issue-row" id="issue-${issue.id}">
-    <div class="issue-main">
-      <input class="issue-name-input" value="${escapeAttr(issue.name)}" placeholder="Issue name"
-        onchange="renameIssue('${subject.id}','${topic.id}','${issue.id}', this.value)">
+  const collapsedClass = issue.collapsed ? 'collapsed' : '';
+  const badgeBg = issue.rating > 0 ? ratingColor(issue.rating) : 'var(--r0)';
+  const badgeLabel = issue.rating > 0 ? issue.rating : '&ndash;';
+  const badgeColor = issue.rating > 0 ? '#fff' : 'var(--text-secondary)';
+
+  return `<div class="issue-row ${collapsedClass}" id="issue-${issue.id}">
+    <div class="issue-header">
+      <div class="issue-header-left" onclick="toggleIssue('${subject.id}','${topic.id}','${issue.id}')">
+        <span class="issue-chevron">&#9662;</span>
+        <input class="issue-name-input" value="${escapeAttr(issue.name)}" placeholder="Issue name"
+          onclick="event.stopPropagation()"
+          onchange="renameIssue('${subject.id}','${topic.id}','${issue.id}', this.value)">
+      </div>
+      <div class="issue-header-right">
+        <div class="issue-badge" style="background:${badgeBg};color:${badgeColor}">${badgeLabel}</div>
+        <button class="row-delete" onclick="deleteIssue('${subject.id}','${topic.id}','${issue.id}')" title="Delete issue">&times;</button>
+      </div>
+    </div>
+    <div class="issue-body">
       <input class="issue-notes-input" value="${escapeAttr(issue.notes || '')}" placeholder="Notes (optional)"
         onchange="setNotes('${subject.id}','${topic.id}','${issue.id}', this.value)">
       <div class="rating-dots">${dots}</div>
       <div class="freq-toggle">${freqBtns}</div>
     </div>
-    <button class="row-delete" onclick="deleteIssue('${subject.id}','${topic.id}','${issue.id}')" title="Delete issue">&times;</button>
   </div>`;
 }
 
@@ -578,10 +657,24 @@ function toggleSubject(id) {
   render();
 }
 
+function toggleTopic(subjectId, topicId) {
+  const subject = state.subjects.find(s => s.id === subjectId);
+  const topic = subject.topics.find(t => t.id === topicId);
+  topic.collapsed = !topic.collapsed;
+  render();
+}
+
+function toggleIssue(subjectId, topicId, issueId) {
+  const issue = findIssue(subjectId, topicId, issueId);
+  issue.collapsed = !issue.collapsed;
+  render();
+}
+
 function scrollToTopic(topicId) {
-  // ensure the parent subject is expanded
+  // ensure the parent subject and the topic itself are expanded
   state.subjects.forEach(s => {
-    if (s.topics.some(t => t.id === topicId)) s.collapsed = false;
+    const t = s.topics.find(t => t.id === topicId);
+    if (t) { s.collapsed = false; t.collapsed = false; }
   });
   render();
   setTimeout(() => {
@@ -632,11 +725,11 @@ function confirmAdd() {
     state.subjects.push({ id: uid(), name: value, collapsed: false, topics: [] });
   } else if (pendingAdd.type === 'topic') {
     const subject = state.subjects.find(s => s.id === pendingAdd.subjectId);
-    subject.topics.push({ id: uid(), name: value, issues: [] });
+    subject.topics.push({ id: uid(), name: value, collapsed: false, issues: [] });
   } else if (pendingAdd.type === 'issue') {
     const subject = state.subjects.find(s => s.id === pendingAdd.subjectId);
     const topic = subject.topics.find(t => t.id === pendingAdd.topicId);
-    topic.issues.push({ id: uid(), name: value, rating: 0, frequency: '', notes: '' });
+    topic.issues.push({ id: uid(), name: value, rating: 0, frequency: '', notes: '', collapsed: false });
   }
   pendingAdd = null;
   render();
