@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLP Issue Tracker</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --surface: #ffffff;
+    --surface-2: #fbfbfd;
+    --text: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --border: #d2d2d7;
+    --accent: #0071e3;
+    --accent-soft: rgba(0,113,227,0.1);
+    --r0: #e5e5ea;
+    --r1: #ff3b30;
+    --r2: #ff9500;
+    --r3: #ffcc00;
+    --r4: #8bc34a;
+    --r5: #34c759;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+  html.dark {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #17171a;
+    --text: #f5f5f7;
+    --text-secondary: #98989d;
+    --border: #38383a;
+    --accent: #0a84ff;
+    --accent-soft: rgba(10,132,255,0.16);
+    --r0: #2c2c2e;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 20px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.25s ease, color 0.25s ease;
+  }
+  .app {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px 20px 120px;
+  }
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--bg);
+    padding: 8px 0 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid transparent;
+  }
+  header.scrolled { border-bottom-color: var(--border); }
+  .title-block h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .title-block p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .header-actions { display: flex; align-items: center; gap: 10px; }
+  .icon-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--text);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .icon-btn:hover { transform: scale(1.06); }
+  .icon-btn:active { transform: scale(0.94); }
+
+  /* Overview heatmap */
+  .overview {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 18px 18px 20px;
+    margin: 18px 0 28px;
+    box-shadow: var(--shadow);
+  }
+  .overview-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+  }
+  .overview-empty {
+    font-size: 13px;
+    color: var(--text-secondary);
+    padding: 10px 0;
+  }
+  .overview-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 0;
+  }
+  .overview-row-label {
+    width: 130px;
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .overview-cells {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .heat-cell {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid rgba(0,0,0,0.06);
+    transition: transform 0.12s ease;
+    flex-shrink: 0;
+  }
+  .heat-cell:hover { transform: scale(1.15); }
+  .heat-cell.empty {
+    background: transparent;
+    border: 1.5px dashed var(--border);
+  }
+
+  /* Subject cards */
+  .subject-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .subject-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+    cursor: pointer;
+  }
+  .subject-header-left { display: flex; align-items: center; gap: 10px; }
+  .chevron {
+    font-size: 11px;
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
+  }
+  .subject-card.collapsed .chevron { transform: rotate(-90deg); }
+  .subject-name { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .subject-meta { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
+  .subject-avg-pill {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 20px;
+    color: #fff;
+  }
+  .subject-body {
+    max-height: 4000px;
+    padding: 0 18px 16px;
+    border-top: 1px solid var(--border);
+    transition: max-height 0.25s ease;
+  }
+  .subject-card.collapsed .subject-body { display: none; }
+
+  .topic-block { margin-top: 14px; }
+  .topic-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .topic-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .topic-actions { display: flex; gap: 6px; }
+
+  .issue-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    margin-bottom: 6px;
+  }
+  .issue-main { flex: 1; min-width: 0; }
+  .issue-name-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text);
+    font-family: inherit;
+    padding: 2px 0;
+  }
+  .issue-name-input:focus { outline: none; }
+  .issue-notes-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: inherit;
+    padding: 2px 0;
+    margin-top: 2px;
+  }
+  .issue-notes-input:focus { outline: none; }
+  .issue-notes-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
+
+  .rating-dots { display: flex; gap: 4px; margin-top: 6px; }
+  .dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: transparent;
+    transition: transform 0.1s ease;
+  }
+  .dot:hover { transform: scale(1.15); }
+
+  .freq-toggle { display: flex; gap: 3px; margin-top: 6px; }
+  .freq-btn {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 2px 6px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .freq-btn.active-high { background: var(--r1); border-color: var(--r1); color: #fff; }
+  .freq-btn.active-medium { background: var(--r2); border-color: var(--r2); color: #fff; }
+  .freq-btn.active-low { background: var(--border); color: var(--text); }
+
+  .row-delete {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .row-delete:hover { background: rgba(255,59,48,0.12); color: var(--r1); }
+
+  .add-link {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+  }
+  .add-link:hover { background: var(--accent-soft); }
+
+  .inline-add {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .inline-add input {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .inline-add input:focus { outline: none; border-color: var(--accent); }
+  .inline-add button {
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 70px 20px;
+    color: var(--text-secondary);
+  }
+  .empty-state h2 {
+    font-size: 19px;
+    color: var(--text);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .empty-state p { font-size: 14px; margin-bottom: 22px; }
+  .empty-state .add-link {
+    font-size: 15px;
+    background: var(--accent);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 22px;
+  }
+  .empty-state .add-link:hover { opacity: 0.9; background: var(--accent); }
+
+  .footer-add {
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
+  }
+  .footer-add .add-link {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 10px 18px;
+    border-radius: 22px;
+    font-size: 13.5px;
+    box-shadow: var(--shadow);
+  }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 12px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header id="header">
+    <div class="title-block">
+      <h1>CLP Issue Tracker</h1>
+      <p id="subhead">Rate. Scan. Target the gaps.</p>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="darkToggle" title="Toggle dark mode">&#9789;</button>
+    </div>
+  </header>
+
+  <div class="overview" id="overview"></div>
+
+  <div id="subjectsList"></div>
+
+  <div class="footer-add">
+    <button class="add-link" onclick="startAddSubject()">+ Add Subject</button>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'clpTrackerData_v1';
+const THEME_KEY = 'clpTrackerTheme_v1';
+
+let state = loadState();
+let pendingAdd = null; // { type: 'subject'|'topic'|'issue', subjectId, topicId }
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { subjects: [] };
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// ---------- Rating / color helpers ----------
+function ratingColor(r) {
+  const map = { 0: 'var(--r0)', 1: 'var(--r1)', 2: 'var(--r2)', 3: 'var(--r3)', 4: 'var(--r4)', 5: 'var(--r5)' };
+  return map[r] || map[0];
+}
+
+function topicAvg(topic) {
+  if (!topic.issues.length) return null;
+  const rated = topic.issues.filter(i => i.rating > 0);
+  if (!rated.length) return 0;
+  return rated.reduce((s, i) => s + i.rating, 0) / rated.length;
+}
+
+function subjectAvg(subject) {
+  const allIssues = subject.topics.flatMap(t => t.issues);
+  const rated = allIssues.filter(i => i.rating > 0);
+  if (!rated.length) return null;
+  return rated.reduce((s, i) => s + i.rating, 0) / rated.length;
+}
+
+function avgColor(avg) {
+  if (avg === null || avg === undefined) return 'var(--r0)';
+  return ratingColor(Math.round(avg));
+}
+
+// ---------- Rendering ----------
+function render() {
+  renderOverview();
+  renderSubjects();
+  saveState();
+}
+
+function renderOverview() {
+  const el = document.getElementById('overview');
+  if (!state.subjects.length) {
+    el.innerHTML = `<div class="overview-title">Overview</div><div class="overview-empty">Add a subject to see your heatmap here.</div>`;
+    return;
+  }
+  let rows = '';
+  state.subjects.forEach(subject => {
+    let cells = '';
+    if (!subject.topics.length) {
+      cells += `<div class="heat-cell empty" title="No topics yet"></div>`;
+    } else {
+      subject.topics.forEach(topic => {
+        const avg = topicAvg(topic);
+        const title = `${topic.name}: ${avg === null ? 'no issues' : avg === 0 ? 'unrated' : avg.toFixed(1) + '/5'}`;
+        if (avg === null) {
+          cells += `<div class="heat-cell empty" title="${escapeAttr(title)}" onclick="scrollToTopic('${topic.id}')"></div>`;
+        } else {
+          cells += `<div class="heat-cell" style="background:${avgColor(avg)}" title="${escapeAttr(title)}" onclick="scrollToTopic('${topic.id}')"></div>`;
+        }
+      });
+    }
+    rows += `<div class="overview-row">
+      <div class="overview-row-label" title="${escapeAttr(subject.name)}">${escapeHtml(subject.name)}</div>
+      <div class="overview-cells">${cells}</div>
+    </div>`;
+  });
+  el.innerHTML = `<div class="overview-title">Overview</div>${rows}
+    <div class="legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--r0)"></div>Unrated</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--r1)"></div>1 &mdash; hopeless</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--r2)"></div>2</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--r3)"></div>3</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--r4)"></div>4</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--r5)"></div>5 &mdash; excellent</div>
+    </div>`;
+}
+
+function renderSubjects() {
+  const container = document.getElementById('subjectsList');
+  if (!state.subjects.length) {
+    container.innerHTML = `<div class="empty-state">
+      <h2>Nothing tracked yet</h2>
+      <p>Add your first subject to start building the map.</p>
+      <button class="add-link" onclick="startAddSubject()">+ Add Subject</button>
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = state.subjects.map(subject => {
+    const avg = subjectAvg(subject);
+    const collapsedClass = subject.collapsed ? 'collapsed' : '';
+    const topicsHtml = subject.topics.map(topic => renderTopic(subject, topic)).join('');
+    const addTopicForm = pendingAdd && pendingAdd.type === 'topic' && pendingAdd.subjectId === subject.id
+      ? inlineAddForm('topic', 'Topic name') : `<button class="add-link" onclick="startAddTopic('${subject.id}')">+ Add Topic</button>`;
+
+    return `<div class="subject-card ${collapsedClass}" id="subject-${subject.id}">
+      <div class="subject-header" onclick="toggleSubject('${subject.id}')">
+        <div class="subject-header-left">
+          <span class="chevron">&#9662;</span>
+          <div>
+            <div class="subject-name">${escapeHtml(subject.name)}</div>
+            <div class="subject-meta">${subject.topics.length} topic${subject.topics.length === 1 ? '' : 's'} &middot; ${countIssues(subject)} issue${countIssues(subject) === 1 ? '' : 's'}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;" onclick="event.stopPropagation()">
+          ${avg !== null ? `<div class="subject-avg-pill" style="background:${avgColor(avg)}">${avg.toFixed(1)}</div>` : ''}
+          <button class="row-delete" onclick="deleteSubject('${subject.id}')" title="Delete subject">&times;</button>
+        </div>
+      </div>
+      <div class="subject-body">
+        ${topicsHtml}
+        <div style="margin-top:10px;">${addTopicForm}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function countIssues(subject) {
+  return subject.topics.reduce((s, t) => s + t.issues.length, 0);
+}
+
+function renderTopic(subject, topic) {
+  const issuesHtml = topic.issues.map(issue => renderIssue(subject, topic, issue)).join('');
+  const addIssueForm = pendingAdd && pendingAdd.type === 'issue' && pendingAdd.topicId === topic.id
+    ? inlineAddForm('issue', 'Issue name') : `<button class="add-link" onclick="startAddIssue('${subject.id}','${topic.id}')">+ Add Issue</button>`;
+
+  return `<div class="topic-block" id="topic-${topic.id}">
+    <div class="topic-header">
+      <div class="topic-name">${escapeHtml(topic.name)}</div>
+      <div class="topic-actions">
+        <button class="row-delete" onclick="deleteTopic('${subject.id}','${topic.id}')" title="Delete topic">&times;</button>
+      </div>
+    </div>
+    ${issuesHtml}
+    ${addIssueForm}
+  </div>`;
+}
+
+function renderIssue(subject, topic, issue) {
+  const dots = [1,2,3,4,5].map(n => {
+    const filled = issue.rating >= n;
+    const bg = issue.rating >= n ? ratingColor(issue.rating) : 'transparent';
+    return `<div class="dot" style="background:${bg};border-color:${issue.rating >= n ? ratingColor(issue.rating) : 'var(--border)'}"
+      onclick="setRating('${subject.id}','${topic.id}','${issue.id}',${n})"></div>`;
+  }).join('');
+
+  const freq = issue.frequency || '';
+  const freqBtns = ['high','medium','low'].map(f => {
+    const activeClass = freq === f ? `active-${f}` : '';
+    const label = f === 'high' ? 'H' : f === 'medium' ? 'M' : 'L';
+    return `<button class="freq-btn ${activeClass}" onclick="setFrequency('${subject.id}','${topic.id}','${issue.id}','${f}')">${label}</button>`;
+  }).join('');
+
+  return `<div class="issue-row" id="issue-${issue.id}">
+    <div class="issue-main">
+      <input class="issue-name-input" value="${escapeAttr(issue.name)}" placeholder="Issue name"
+        onchange="renameIssue('${subject.id}','${topic.id}','${issue.id}', this.value)">
+      <input class="issue-notes-input" value="${escapeAttr(issue.notes || '')}" placeholder="Notes (optional)"
+        onchange="setNotes('${subject.id}','${topic.id}','${issue.id}', this.value)">
+      <div class="rating-dots">${dots}</div>
+      <div class="freq-toggle">${freqBtns}</div>
+    </div>
+    <button class="row-delete" onclick="deleteIssue('${subject.id}','${topic.id}','${issue.id}')" title="Delete issue">&times;</button>
+  </div>`;
+}
+
+function inlineAddForm(type, placeholder) {
+  return `<div class="inline-add">
+    <input id="inlineAddInput" type="text" placeholder="${placeholder}" autofocus
+      onkeydown="if(event.key==='Enter') confirmAdd(); if(event.key==='Escape') cancelAdd();">
+    <button onclick="confirmAdd()">Add</button>
+  </div>`;
+}
+
+// ---------- Mutations ----------
+function toggleSubject(id) {
+  const s = state.subjects.find(s => s.id === id);
+  s.collapsed = !s.collapsed;
+  render();
+}
+
+function scrollToTopic(topicId) {
+  // ensure the parent subject is expanded
+  state.subjects.forEach(s => {
+    if (s.topics.some(t => t.id === topicId)) s.collapsed = false;
+  });
+  render();
+  setTimeout(() => {
+    const el = document.getElementById('topic-' + topicId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 50);
+}
+
+function startAddSubject() {
+  pendingAdd = { type: 'subject' };
+  renderTopLevelAdd();
+}
+
+function renderTopLevelAdd() {
+  // inject a form above the footer add button
+  const container = document.getElementById('subjectsList');
+  const formDiv = document.createElement('div');
+  formDiv.className = 'subject-card';
+  formDiv.style.padding = '14px 18px';
+  formDiv.innerHTML = inlineAddForm('subject', 'Subject name (e.g. Criminal Procedure)');
+  container.appendChild(formDiv);
+  document.getElementById('inlineAddInput').focus();
+}
+
+function startAddTopic(subjectId) {
+  pendingAdd = { type: 'topic', subjectId };
+  render();
+  setTimeout(() => document.getElementById('inlineAddInput')?.focus(), 30);
+}
+
+function startAddIssue(subjectId, topicId) {
+  pendingAdd = { type: 'issue', subjectId, topicId };
+  render();
+  setTimeout(() => document.getElementById('inlineAddInput')?.focus(), 30);
+}
+
+function cancelAdd() {
+  pendingAdd = null;
+  render();
+}
+
+function confirmAdd() {
+  const input = document.getElementById('inlineAddInput');
+  const value = input ? input.value.trim() : '';
+  if (!value) { cancelAdd(); return; }
+
+  if (pendingAdd.type === 'subject') {
+    state.subjects.push({ id: uid(), name: value, collapsed: false, topics: [] });
+  } else if (pendingAdd.type === 'topic') {
+    const subject = state.subjects.find(s => s.id === pendingAdd.subjectId);
+    subject.topics.push({ id: uid(), name: value, issues: [] });
+  } else if (pendingAdd.type === 'issue') {
+    const subject = state.subjects.find(s => s.id === pendingAdd.subjectId);
+    const topic = subject.topics.find(t => t.id === pendingAdd.topicId);
+    topic.issues.push({ id: uid(), name: value, rating: 0, frequency: '', notes: '' });
+  }
+  pendingAdd = null;
+  render();
+}
+
+function deleteSubject(id) {
+  if (!confirm('Delete this subject and everything in it?')) return;
+  state.subjects = state.subjects.filter(s => s.id !== id);
+  render();
+}
+
+function deleteTopic(subjectId, topicId) {
+  if (!confirm('Delete this topic and its issues?')) return;
+  const subject = state.subjects.find(s => s.id === subjectId);
+  subject.topics = subject.topics.filter(t => t.id !== topicId);
+  render();
+}
+
+function deleteIssue(subjectId, topicId, issueId) {
+  const subject = state.subjects.find(s => s.id === subjectId);
+  const topic = subject.topics.find(t => t.id === topicId);
+  topic.issues = topic.issues.filter(i => i.id !== issueId);
+  render();
+}
+
+function setRating(subjectId, topicId, issueId, n) {
+  const issue = findIssue(subjectId, topicId, issueId);
+  issue.rating = issue.rating === n ? 0 : n;
+  render();
+}
+
+function setFrequency(subjectId, topicId, issueId, f) {
+  const issue = findIssue(subjectId, topicId, issueId);
+  issue.frequency = issue.frequency === f ? '' : f;
+  render();
+}
+
+function renameIssue(subjectId, topicId, issueId, value) {
+  const issue = findIssue(subjectId, topicId, issueId);
+  issue.name = value;
+  saveState();
+}
+
+function setNotes(subjectId, topicId, issueId, value) {
+  const issue = findIssue(subjectId, topicId, issueId);
+  issue.notes = value;
+  saveState();
+}
+
+function findIssue(subjectId, topicId, issueId) {
+  const subject = state.subjects.find(s => s.id === subjectId);
+  const topic = subject.topics.find(t => t.id === topicId);
+  return topic.issues.find(i => i.id === issueId);
+}
+
+// ---------- Utils ----------
+function escapeHtml(str) {
+  return (str || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(str) { return escapeHtml(str); }
+
+// ---------- Theme ----------
+function applyTheme(theme) {
+  document.documentElement.classList.toggle('dark', theme === 'dark');
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+document.getElementById('darkToggle').addEventListener('click', () => {
+  const isDark = document.documentElement.classList.contains('dark');
+  applyTheme(isDark ? 'light' : 'dark');
+});
+
+(function initTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved) { applyTheme(saved); }
+  else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) { applyTheme('dark'); }
+})();
+
+window.addEventListener('scroll', () => {
+  document.getElementById('header').classList.toggle('scrolled', window.scrollY > 4);
+});
+
+render();
+</script>
+</body>
+</html>
