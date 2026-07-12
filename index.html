@@ -186,6 +186,7 @@
     margin-top: 14px;
     border-radius: var(--radius-sm);
   }
+  .topic-block.dragging { opacity: 0.4; }
   .topic-header {
     display: flex;
     align-items: center;
@@ -194,6 +195,16 @@
     cursor: pointer;
   }
   .topic-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .drag-handle {
+    cursor: grab;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1;
+    flex-shrink: 0;
+    padding: 2px 1px;
+    user-select: none;
+  }
+  .drag-handle:active { cursor: grabbing; }
   .topic-chevron {
     font-size: 10px;
     color: var(--text-secondary);
@@ -219,7 +230,21 @@
     border-radius: 20px;
     color: #fff;
   }
+  .sortmode-btn {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 3px 8px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .sortmode-btn.manual { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
   .topic-block.collapsed .topic-body { display: none; }
+  .topic-drag-toggle-wrap { margin: 2px 0 12px; }
 
   .issue-row {
     border-radius: var(--radius-sm);
@@ -227,6 +252,7 @@
     margin-bottom: 6px;
     padding: 10px 10px;
   }
+  .issue-row.dragging { opacity: 0.4; }
   .issue-header {
     display: flex;
     align-items: center;
@@ -562,6 +588,10 @@ function renderSubjects() {
         </div>
       </div>
       <div class="subject-body">
+        <div class="topic-drag-toggle-wrap">
+          <button class="sortmode-btn ${subject.topicDragEnabled ? 'manual' : ''}" onclick="toggleTopicDrag('${subject.id}')"
+            title="Toggle manual drag-reordering of topics">${subject.topicDragEnabled ? '&#9776; Reordering On' : '&#9776; Reorder Topics'}</button>
+        </div>
         ${topicsHtml}
         <div style="margin-top:10px;">${addTopicForm}</div>
       </div>
@@ -584,15 +614,22 @@ function sortedIssues(topic) {
 }
 
 function renderTopic(subject, topic) {
-  const issuesHtml = sortedIssues(topic).map(issue => renderIssue(subject, topic, issue)).join('');
+  const sortMode = topic.sortMode || 'auto';
+  const issueList = sortMode === 'manual' ? topic.issues : sortedIssues(topic);
+  const issuesHtml = issueList.map(issue => renderIssue(subject, topic, issue, sortMode)).join('');
   const addIssueForm = pendingAdd && pendingAdd.type === 'issue' && pendingAdd.topicId === topic.id
     ? inlineAddForm('issue', 'Issue name') : `<button class="add-link" onclick="startAddIssue('${subject.id}','${topic.id}')">+ Add Issue</button>`;
   const avg = topicAvg(topic);
   const collapsedClass = topic.collapsed ? 'collapsed' : '';
 
-  return `<div class="topic-block ${collapsedClass}" id="topic-${topic.id}">
+  return `<div class="topic-block ${collapsedClass}" id="topic-${topic.id}"
+      ${subject.topicDragEnabled ? `ondragover="handleTopicDragOver(event)" ondrop="handleTopicDrop(event,'${subject.id}','${topic.id}')"` : ''}>
     <div class="topic-header" onclick="toggleTopic('${subject.id}','${topic.id}')">
       <div class="topic-header-left">
+        ${subject.topicDragEnabled ? `<span class="drag-handle" draggable="true"
+          ondragstart="handleTopicDragStart(event,'${subject.id}','${topic.id}')"
+          ondragend="handleDragEnd(event)"
+          onclick="event.stopPropagation()" title="Drag to reorder">&#8942;&#8942;</span>` : ''}
         <span class="topic-chevron">&#9662;</span>
         <div class="topic-name-wrap">
           <div class="topic-name">${escapeHtml(topic.name)}</div>
@@ -601,6 +638,8 @@ function renderTopic(subject, topic) {
       </div>
       <div class="topic-actions" onclick="event.stopPropagation()">
         ${avg !== null ? `<div class="topic-avg-pill" style="background:${avgColor(avg)}">${avg.toFixed(1)}</div>` : ''}
+        <button class="sortmode-btn ${sortMode === 'manual' ? 'manual' : ''}" onclick="toggleSortMode('${subject.id}','${topic.id}')"
+          title="Toggle between auto-sort (H/M/L) and manual drag order">${sortMode === 'manual' ? 'Manual' : 'Auto'}</button>
         <button class="row-delete" onclick="deleteTopic('${subject.id}','${topic.id}')" title="Delete topic">&times;</button>
       </div>
     </div>
@@ -611,7 +650,7 @@ function renderTopic(subject, topic) {
   </div>`;
 }
 
-function renderIssue(subject, topic, issue) {
+function renderIssue(subject, topic, issue, sortMode) {
   const dots = [1,2,3,4,5].map(n => {
     const bg = issue.rating >= n ? ratingColor(issue.rating) : 'transparent';
     return `<div class="dot" style="background:${bg};border-color:${issue.rating >= n ? ratingColor(issue.rating) : 'var(--border)'}"
@@ -629,10 +668,19 @@ function renderIssue(subject, topic, issue) {
   const badgeBg = issue.rating > 0 ? ratingColor(issue.rating) : 'var(--r0)';
   const badgeLabel = issue.rating > 0 ? issue.rating : '&ndash;';
   const badgeColor = issue.rating > 0 ? '#fff' : 'var(--text-secondary)';
+  const isManual = sortMode === 'manual';
+  const dragHandle = isManual
+    ? `<span class="drag-handle" draggable="true"
+        ondragstart="handleIssueDragStart(event,'${subject.id}','${topic.id}','${issue.id}')"
+        ondragend="handleDragEnd(event)"
+        onclick="event.stopPropagation()" title="Drag to reorder">&#8942;&#8942;</span>`
+    : '';
 
-  return `<div class="issue-row ${collapsedClass}" id="issue-${issue.id}">
+  return `<div class="issue-row ${collapsedClass}" id="issue-${issue.id}"
+      ${isManual ? `ondragover="handleIssueDragOver(event)" ondrop="handleIssueDrop(event,'${subject.id}','${topic.id}','${issue.id}')"` : ''}>
     <div class="issue-header">
       <div class="issue-header-left" onclick="toggleIssue('${subject.id}','${topic.id}','${issue.id}')">
+        ${dragHandle}
         <span class="issue-chevron">&#9662;</span>
         <input class="issue-name-input" value="${escapeAttr(issue.name)}" placeholder="Issue name"
           onclick="event.stopPropagation()"
@@ -678,6 +726,88 @@ function toggleIssue(subjectId, topicId, issueId) {
   const issue = findIssue(subjectId, topicId, issueId);
   issue.collapsed = !issue.collapsed;
   render();
+}
+
+function toggleSortMode(subjectId, topicId) {
+  const subject = state.subjects.find(s => s.id === subjectId);
+  const topic = subject.topics.find(t => t.id === topicId);
+  topic.sortMode = (topic.sortMode || 'auto') === 'manual' ? 'auto' : 'manual';
+  render();
+}
+
+function toggleTopicDrag(subjectId) {
+  const subject = state.subjects.find(s => s.id === subjectId);
+  subject.topicDragEnabled = !subject.topicDragEnabled;
+  render();
+}
+
+// ---------- Drag and drop: topics ----------
+let draggingTopic = null; // { subjectId, topicId }
+
+function handleTopicDragStart(e, subjectId, topicId) {
+  e.stopPropagation();
+  draggingTopic = { subjectId, topicId };
+  e.dataTransfer.effectAllowed = 'move';
+  const block = document.getElementById('topic-' + topicId);
+  if (block) block.classList.add('dragging');
+}
+
+function handleTopicDragOver(e) {
+  if (draggingTopic) e.preventDefault();
+}
+
+function handleTopicDrop(e, subjectId, topicId) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!draggingTopic || draggingTopic.subjectId !== subjectId || draggingTopic.topicId === topicId) {
+    draggingTopic = null;
+    return;
+  }
+  const subject = state.subjects.find(s => s.id === subjectId);
+  const fromIdx = subject.topics.findIndex(t => t.id === draggingTopic.topicId);
+  const toIdx = subject.topics.findIndex(t => t.id === topicId);
+  const [moved] = subject.topics.splice(fromIdx, 1);
+  subject.topics.splice(toIdx, 0, moved);
+  draggingTopic = null;
+  render();
+}
+
+// ---------- Drag and drop: issues (manual mode only) ----------
+let draggingIssue = null; // { subjectId, topicId, issueId }
+
+function handleIssueDragStart(e, subjectId, topicId, issueId) {
+  e.stopPropagation();
+  draggingIssue = { subjectId, topicId, issueId };
+  e.dataTransfer.effectAllowed = 'move';
+  const row = document.getElementById('issue-' + issueId);
+  if (row) row.classList.add('dragging');
+}
+
+function handleIssueDragOver(e) {
+  if (draggingIssue) e.preventDefault();
+}
+
+function handleIssueDrop(e, subjectId, topicId, issueId) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!draggingIssue || draggingIssue.topicId !== topicId || draggingIssue.issueId === issueId) {
+    draggingIssue = null;
+    return;
+  }
+  const subject = state.subjects.find(s => s.id === subjectId);
+  const topic = subject.topics.find(t => t.id === topicId);
+  const fromIdx = topic.issues.findIndex(i => i.id === draggingIssue.issueId);
+  const toIdx = topic.issues.findIndex(i => i.id === issueId);
+  const [moved] = topic.issues.splice(fromIdx, 1);
+  topic.issues.splice(toIdx, 0, moved);
+  draggingIssue = null;
+  render();
+}
+
+function handleDragEnd(e) {
+  document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+  draggingTopic = null;
+  draggingIssue = null;
 }
 
 function scrollToTopic(topicId) {
@@ -735,7 +865,7 @@ function confirmAdd() {
     state.subjects.push({ id: uid(), name: value, collapsed: false, topics: [] });
   } else if (pendingAdd.type === 'topic') {
     const subject = state.subjects.find(s => s.id === pendingAdd.subjectId);
-    subject.topics.push({ id: uid(), name: value, collapsed: false, issues: [] });
+    subject.topics.push({ id: uid(), name: value, collapsed: false, sortMode: 'auto', issues: [] });
   } else if (pendingAdd.type === 'issue') {
     const subject = state.subjects.find(s => s.id === pendingAdd.subjectId);
     const topic = subject.topics.find(t => t.id === pendingAdd.topicId);
